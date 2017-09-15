@@ -7,6 +7,14 @@ URL=git@github.com:CanonicalLtd/serial-vault-charm.git
 OWNER=canonical-solutions
 HOMEPAGE=https://github.com/CanonicalLtd/serial-vault-charm
 ISSUES=https://github.com/CanonicalLtd/serial-vault-charm/issues
+SERIES=xenial
+
+check_valid_series() {
+	if [ "$(lsb_release -cs)" != "$SERIES" ]; then
+		echo "Sorry, this releasing script can only be executed on $SERIES"
+		exit 1
+	fi
+}
 
 add_juju_repo_if_needed() {
 	if [ $(grep ^ /etc/apt/sources.list /etc/apt/sources.list.d/* | grep -v list.save | grep -v deb-src | grep deb | grep juju-ubuntu-stable | wc -l) -eq 0 ]; then
@@ -72,6 +80,8 @@ while [ -n "$1" ]; do
 			;;
 	esac
 done
+
+check_valid_series
 
 add_juju_repo_if_needed
 install_pkg_if_needed charm
