@@ -12,6 +12,7 @@ add_juju_repo_if_needed() {
 	if [ $(grep ^ /etc/apt/sources.list /etc/apt/sources.list.d/* | grep -v list.save | grep -v deb-src | grep deb | grep juju-ubuntu-stable | wc -l) -eq 0 ]; then
 		echo "adding juju stable repository..."
 		sudo add-apt-repository ppa:juju/stable
+		sudo apt update
 	fi
 }
 
