@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 set -e
 
@@ -8,6 +8,7 @@ OWNER=canonical-solutions
 HOMEPAGE=https://github.com/CanonicalLtd/serial-vault-charm
 ISSUES=https://github.com/CanonicalLtd/serial-vault-charm/issues
 SERIES=xenial
+CHANNEL=stable
 
 check_valid_series() {
 	if [ "$(lsb_release -cs)" != "$SERIES" ]; then
@@ -30,6 +31,25 @@ install_pkg_if_needed() {
 	fi
 }
 
+release_to_channels() {
+# promote charm to requested channel and the ones less critical than that.
+case "$CHANNEL" in
+	stable)
+		charm release cs:~$OWNER/$NAME-$VERSION --channel stable
+		;&
+	candidate)
+		charm release cs:~$OWNER/$NAME-$VERSION --channel candidate
+		;&
+	beta)
+		charm release cs:~$OWNER/$NAME-$VERSION --channel beta
+		;&
+	edge)
+		charm release cs:~$OWNER/$NAME-$VERSION --channel edge
+		exit
+		;;
+esac
+}
+
 show_help() {
     exec cat <<EOF
 Usage: build_and_release_charm.sh [OPTIONS]
@@ -41,6 +61,7 @@ optional arguments:
   --owner=<owner>                  Owner of the charm in the store (default: $OWNER)
   --homepage=<homepage>            Url of the project homepage (default: $HOMEPAGE)
   --issues=<issues>                Url where filing issues for the project (default: $ISSUES)
+  --channel=<channel>              Most critical channel to publish the charm. It'll be publish in that one and any less critical (defautl: $CHANNEL)
 EOF
 }
 
@@ -74,6 +95,10 @@ while [ -n "$1" ]; do
 			ISSUES=${1#*=}
 			shift
 			;;
+		--channel=*)
+			CHANNEL=${1#*=}
+			shift
+			;;
 		*)
 			echo "Unknown command: $1"
 			exit 1
@@ -88,19 +113,15 @@ install_pkg_if_needed charm
 install_pkg_if_needed charm-tools
 
 # clone and build charm from sources
-[ -n $JUJU_REPOSITORY ] 				|| JUJU_REPOSITORY=./charms
+[ -n "$JUJU_REPOSITORY" ] 				|| JUJU_REPOSITORY=./charms
 [ -e $JUJU_REPOSITORY/layers/$NAME ] 	|| git clone $URL $JUJU_REPOSITORY/layers/$NAME
 charm build $JUJU_REPOSITORY/layers/$NAME
 
 # publish in store
 charm login
-VERSION=`charm push $JUJU_REPOSITORY/builds/$NAME | grep -Po "(?<=$NAME-)\d+")`
+VERSION=`charm push $JUJU_REPOSITORY/builds/$NAME | grep -Po "(?<=$NAME-)\d+"`
 
-# promote charm to all channels, grant permissions and set homepage and issues urls
-charm release cs:~$OWNER/$NAME-$VERSION --channel edge
-charm release cs:~$OWNER/$NAME-$VERSION --channel beta
-charm release cs:~$OWNER/$NAME-$VERSION --channel candidate
-charm release cs:~$OWNER/$NAME-$VERSION --channel stable
+release_to_channels
 
 charm grant cs:~$OWNER/$NAME-$VERSION --acl read everyone
 
