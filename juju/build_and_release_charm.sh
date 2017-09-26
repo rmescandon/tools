@@ -2,7 +2,6 @@
 
 set -e
 
-NAME=serial-vault-charm
 URL=git@github.com:CanonicalLtd/serial-vault-charm.git
 OWNER=canonical-solutions
 HOMEPAGE=https://github.com/CanonicalLtd/serial-vault-charm
@@ -31,23 +30,41 @@ install_pkg_if_needed() {
 	fi
 }
 
+# $1 name of the charm to release
 release_to_channels() {
 # promote charm to requested channel and the ones less critical than that.
 case "$CHANNEL" in
 	stable)
-		charm release cs:~$OWNER/$NAME-$VERSION --channel stable
+		charm release cs:~$OWNER/$1-$VERSION --channel stable
 		;&
 	candidate)
-		charm release cs:~$OWNER/$NAME-$VERSION --channel candidate
+		charm release cs:~$OWNER/$1-$VERSION --channel candidate
 		;&
 	beta)
-		charm release cs:~$OWNER/$NAME-$VERSION --channel beta
+		charm release cs:~$OWNER/$1-$VERSION --channel beta
 		;&
 	edge)
-		charm release cs:~$OWNER/$NAME-$VERSION --channel edge
+		charm release cs:~$OWNER/$1-$VERSION --channel edge
 		exit
 		;;
 esac
+}
+
+# got from https://gist.github.com/pkuczynski/8665367
+parse_yaml() {
+   local prefix=$2
+   local s='[[:space:]]*' w='[a-zA-Z0-9_]*' fs=$(echo @|tr @ '\034')
+   sed -ne "s|^\($s\)\($w\)$s:$s\"\(.*\)\"$s\$|\1$fs\2$fs\3|p" \
+        -e "s|^\($s\)\($w\)$s:$s\(.*\)$s\$|\1$fs\2$fs\3|p"  $1 |
+   awk -F$fs '{
+      indent = length($1)/2;
+      vname[indent] = $2;
+      for (i in vname) {if (i > indent) {delete vname[i]}}
+      if (length($3) > 0) {
+         vn=""; for (i=0; i<indent; i++) {vn=(vn)(vname[i])("_")}
+         printf("%s%s%s=\"%s\"\n", "'$prefix'",vn, $2, $3);
+      }
+   }'
 }
 
 show_help() {
@@ -56,7 +73,6 @@ Usage: build_and_release_charm.sh [OPTIONS]
 
 optional arguments:
   --help                           Show this help message and exit
-  --name=<name>                    Name of the charm in the store (default: $NAME)
   --url=<url>                      Repository url from where to get the charm sources (default: $URL)
   --owner=<owner>                  Owner of the charm in the store (default: $OWNER)
   --homepage=<homepage>            Url of the project homepage (default: $HOMEPAGE)
@@ -113,19 +129,23 @@ install_pkg_if_needed charm
 install_pkg_if_needed charm-tools
 
 # clone and build charm from sources
-[ -n "$JUJU_REPOSITORY" ] 				|| JUJU_REPOSITORY=$(mktemp -d)/charms
-[ -e $JUJU_REPOSITORY/layers/$NAME ] 	|| git clone $URL $JUJU_REPOSITORY/layers/$NAME
-charm build $JUJU_REPOSITORY/layers/$NAME
+project_name=$(basename $URL | cut -d'.' -f1)
+[ -n "$JUJU_REPOSITORY" ] 						|| JUJU_REPOSITORY=$(mktemp -d)/charms
+[ -e $JUJU_REPOSITORY/layers/${project_name} ] 	|| git clone $URL $JUJU_REPOSITORY/layers/${project_name}
+charm build $JUJU_REPOSITORY/layers/${project_name}
+
+# get charm properties by parsing metadata.yaml file and assign their created vars 'charm_' prefix
+eval $(parse_yaml $JUJU_REPOSITORY/layers/${project_name}/metadata.yaml "charm_")
 
 # publish in store
 charm login
-VERSION=`charm push $JUJU_REPOSITORY/builds/$NAME | grep -Po "(?<=$NAME-)\d+"`
+VERSION=`charm push $JUJU_REPOSITORY/builds/${charm_name} | grep -Po "(?<=${charm_name}-)\d+"`
 
-release_to_channels
+release_to_channels ${charm_name}
 
-charm grant cs:~$OWNER/$NAME-$VERSION --acl read everyone
+charm grant cs:~$OWNER/${charm_name}-$VERSION --acl read everyone
 
-charm set cs:~$OWNER/$NAME --channel stable homepage=$HOMEPAGE
-charm set cs:~$OWNER/$NAME --channel stable bugs-url=$ISSUES
+charm set cs:~$OWNER/${charm_name} --channel stable homepage=$HOMEPAGE
+charm set cs:~$OWNER/${charm_name} --channel stable bugs-url=$ISSUES
 
-echo "cs:~$OWNER/$NAME build and release finished Ok."
+echo "cs:~$OWNER/${charm_name} build and release finished Ok."
