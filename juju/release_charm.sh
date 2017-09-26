@@ -114,7 +114,7 @@ install_pkg_if_needed charm-tools
 
 # clone charm from sources in a tmp dir
 TMP_DIR=$(mktemp -d)
-[ -e $NAME ] || git clone $URL $TMP_DIR/$NAME
+git clone $URL $TMP_DIR/$NAME
 
 # publish in store
 charm login
