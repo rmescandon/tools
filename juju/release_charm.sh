@@ -112,12 +112,13 @@ add_juju_repo_if_needed
 install_pkg_if_needed charm
 install_pkg_if_needed charm-tools
 
-# clone charm from sources
-[ -e $NAME ] || git clone $URL $NAME
+# clone charm from sources in a tmp dir
+TMP_DIR=$(mktemp -d)
+[ -e $NAME ] || git clone $URL $TMP_DIR/$NAME
 
 # publish in store
 charm login
-VERSION=`charm push ./$NAME | grep -Po "(?<=$NAME-)\d+"`
+VERSION=`charm push $TMP_DIR/$NAME | grep -Po "(?<=$NAME-)\d+"`
 
 release_to_channels
 

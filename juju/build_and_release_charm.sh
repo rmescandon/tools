@@ -113,7 +113,7 @@ install_pkg_if_needed charm
 install_pkg_if_needed charm-tools
 
 # clone and build charm from sources
-[ -n "$JUJU_REPOSITORY" ] 				|| JUJU_REPOSITORY=./charms
+[ -n "$JUJU_REPOSITORY" ] 				|| JUJU_REPOSITORY=$(mktemp -d)/charms
 [ -e $JUJU_REPOSITORY/layers/$NAME ] 	|| git clone $URL $JUJU_REPOSITORY/layers/$NAME
 charm build $JUJU_REPOSITORY/layers/$NAME
 
