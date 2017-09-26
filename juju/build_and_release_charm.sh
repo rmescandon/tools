@@ -10,8 +10,8 @@ SERIES=xenial
 CHANNEL=stable
 
 check_valid_series() {
-	if [ "$(lsb_release -cs)" != "$SERIES" ]; then
-		echo "Sorry, this releasing script can only be executed on $SERIES"
+	if [ "$(lsb_release -cs)" != "${SERIES}" ]; then
+		echo "Sorry, this releasing script can only be executed on ${SERIES}"
 		exit 1
 	fi
 }
@@ -35,16 +35,16 @@ release_to_channels() {
 # promote charm to requested channel and the ones less critical than that.
 case "$CHANNEL" in
 	stable)
-		charm release cs:~$OWNER/$1-$VERSION --channel stable
+		charm release cs:~${OWNER}/$1-${VERSION} --channel stable
 		;&
 	candidate)
-		charm release cs:~$OWNER/$1-$VERSION --channel candidate
+		charm release cs:~${OWNER}/$1-${VERSION} --channel candidate
 		;&
 	beta)
-		charm release cs:~$OWNER/$1-$VERSION --channel beta
+		charm release cs:~${OWNER}/$1-${VERSION} --channel beta
 		;&
 	edge)
-		charm release cs:~$OWNER/$1-$VERSION --channel edge
+		charm release cs:~${OWNER}/$1-${VERSION} --channel edge
 		exit
 		;;
 esac
@@ -129,23 +129,23 @@ install_pkg_if_needed charm
 install_pkg_if_needed charm-tools
 
 # clone and build charm from sources
-project_name=$(basename $URL | cut -d'.' -f1)
-[ -n "$JUJU_REPOSITORY" ] 						|| JUJU_REPOSITORY=$(mktemp -d)/charms
-[ -e $JUJU_REPOSITORY/layers/${project_name} ] 	|| git clone $URL $JUJU_REPOSITORY/layers/${project_name}
-charm build $JUJU_REPOSITORY/layers/${project_name}
+project_name=$(basename ${URL} | cut -d'.' -f1)
+[ -n "${JUJU_REPOSITORY}" ] 						|| JUJU_REPOSITORY=$(mktemp -d)/charms
+[ -e ${JUJU_REPOSITORY}/layers/${project_name} ] 	|| git clone ${URL} ${JUJU_REPOSITORY}/layers/${project_name}
+charm build ${JUJU_REPOSITORY}/layers/${project_name}
 
 # get charm properties by parsing metadata.yaml file and assign their created vars 'charm_' prefix
-eval $(parse_yaml $JUJU_REPOSITORY/layers/${project_name}/metadata.yaml "charm_")
+eval $(parse_yaml ${JUJU_REPOSITORY}/layers/${project_name}/metadata.yaml "charm_")
 
 # publish in store
 charm login
-VERSION=`charm push $JUJU_REPOSITORY/builds/${charm_name} | grep -Po "(?<=${charm_name}-)\d+"`
+VERSION=`charm push ${JUJU_REPOSITORY}/builds/${charm_name} | grep -Po "(?<=${charm_name}-)\d+"`
 
 release_to_channels ${charm_name}
 
-charm grant cs:~$OWNER/${charm_name}-$VERSION --acl read everyone
+charm grant cs:~${OWNER}/${charm_name}-${VERSION} --acl read everyone
 
-charm set cs:~$OWNER/${charm_name} --channel stable homepage=$HOMEPAGE
-charm set cs:~$OWNER/${charm_name} --channel stable bugs-url=$ISSUES
+charm set cs:~${OWNER}/${charm_name} --channel stable homepage=${HOMEPAGE}
+charm set cs:~${OWNER}/${charm_name} --channel stable bugs-url=${ISSUES}
 
-echo "cs:~$OWNER/${charm_name} build and release finished Ok."
+echo "cs:~${OWNER}/${charm_name} build and release finished Ok."
