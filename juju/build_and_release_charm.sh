@@ -132,7 +132,7 @@ install_pkg_if_needed charm-tools
 project_name=$(basename ${URL} | cut -d'.' -f1)
 [ -n "${JUJU_REPOSITORY}" ] 						|| JUJU_REPOSITORY=$(mktemp -d)/charms
 [ -e ${JUJU_REPOSITORY}/layers/${project_name} ] 	|| git clone ${URL} ${JUJU_REPOSITORY}/layers/${project_name}
-charm build ${JUJU_REPOSITORY}/layers/${project_name}
+charm build -o ${JUJU_REPOSITORY} ${JUJU_REPOSITORY}/layers/${project_name}
 
 # get charm properties by parsing metadata.yaml file and assign their created vars 'charm_' prefix
 eval $(parse_yaml ${JUJU_REPOSITORY}/layers/${project_name}/metadata.yaml "charm_")
