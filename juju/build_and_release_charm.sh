@@ -2,7 +2,7 @@
 
 set -e
 
-URL=git@github.com:CanonicalLtd/serial-vault-charm.git
+URL=https://github.com/CanonicalLtd/serial-vault-charm.git
 OWNER=canonical-solutions
 HOMEPAGE=https://github.com/CanonicalLtd/serial-vault-charm
 ISSUES=https://github.com/CanonicalLtd/serial-vault-charm/issues
@@ -17,7 +17,7 @@ check_valid_series() {
 }
 
 add_juju_repo_if_needed() {
-	if [ $(grep ^ /etc/apt/sources.list /etc/apt/sources.list.d/* | grep -v list.save | grep -v deb-src | grep deb | grep juju-ubuntu-stable | wc -l) -eq 0 ]; then
+	if [ "$(grep ^ /etc/apt/sources.list /etc/apt/sources.list.d/* | grep -v list.save | grep -v deb-src | grep deb | grep juju-ubuntu-stable | wc -l)" -eq "0" ]; then
 		echo "adding juju stable repository..."
 		sudo add-apt-repository ppa:juju/stable
 		sudo apt update
@@ -25,8 +25,8 @@ add_juju_repo_if_needed() {
 }
 
 install_pkg_if_needed() {
-	if [ $(dpkg-query -W -f='${Status}' $1 2>/dev/null | grep -c "ok installed") -eq 0 ]; then
-		sudo apt install $1
+	if [ "$(dpkg-query -W -f='${Status}' $1 2>/dev/null | grep -c 'ok installed')" -eq "0" ]; then
+		sudo apt install "$1"
 	fi
 }
 
@@ -35,16 +35,16 @@ release_to_channels() {
 # promote charm to requested channel and the ones less critical than that.
 case "$CHANNEL" in
 	stable)
-		charm release cs:~${OWNER}/$1-${VERSION} --channel stable
+		charm release cs:~"${OWNER}"/"$1"-"${VERSION}" --channel stable
 		;&
 	candidate)
-		charm release cs:~${OWNER}/$1-${VERSION} --channel candidate
+		charm release cs:~"${OWNER}"/"$1"-"${VERSION}" --channel candidate
 		;&
 	beta)
-		charm release cs:~${OWNER}/$1-${VERSION} --channel beta
+		charm release cs:~"${OWNER}"/"$1"-"${VERSION}" --channel beta
 		;&
 	edge)
-		charm release cs:~${OWNER}/$1-${VERSION} --channel edge
+		charm release cs:~"${OWNER}"/"$1"-"${VERSION}" --channel edge
 		exit
 		;;
 esac
@@ -52,7 +52,7 @@ esac
 
 # got from https://gist.github.com/pkuczynski/8665367
 parse_yaml() {
-	local prefix=$2
+	local prefix="$2"
 	local s='[[:space:]]*' w='[a-zA-Z0-9_]*' fs=$(echo @|tr @ '\034')
 	sed -ne "s|^\($s\)\($w\)$s:$s\"\(.*\)\"$s\$|\1$fs\2$fs\3|p" \
     	-e "s|^\($s\)\($w\)$s:$s\(.*\)$s\$|\1$fs\2$fs\3|p"  $1 |
@@ -86,10 +86,6 @@ while [ -n "$1" ]; do
 		--help)
 			show_help
 			exit
-			;;
-		--name=*)
-			NAME=${1#*=}
-			shift
 			;;
 		--url=*)
 			URL=${1#*=}
@@ -129,23 +125,23 @@ install_pkg_if_needed charm
 install_pkg_if_needed charm-tools
 
 # clone and build charm from sources
-project_name=$(basename ${URL} | cut -d'.' -f1)
+project_name=$(basename "${URL}" | cut -d'.' -f1)
 [ -n "${JUJU_REPOSITORY}" ] 						|| JUJU_REPOSITORY=$(mktemp -d)/charms
-[ -e ${JUJU_REPOSITORY}/layers/${project_name} ] 	|| git clone ${URL} ${JUJU_REPOSITORY}/layers/${project_name}
-charm build -o ${JUJU_REPOSITORY} ${JUJU_REPOSITORY}/layers/${project_name}
+[ -e "${JUJU_REPOSITORY}"/layers/"${project_name}" ] 	|| git clone "${URL}" "${JUJU_REPOSITORY}"/layers/"${project_name}"
+charm build -o "${JUJU_REPOSITORY}" "${JUJU_REPOSITORY}"/layers/"${project_name}"
 
 # get charm properties by parsing metadata.yaml file and assign their created vars 'charm_' prefix
-eval $(parse_yaml ${JUJU_REPOSITORY}/layers/${project_name}/metadata.yaml "charm_")
+eval "$(parse_yaml "${JUJU_REPOSITORY}"/layers/"${project_name}"/metadata.yaml 'charm_')"
 
 # publish in store
 charm login
-VERSION=`charm push ${JUJU_REPOSITORY}/builds/${charm_name} | grep -Po "(?<=${charm_name}-)\d+"`
+VERSION=$(charm push "${JUJU_REPOSITORY}"/builds/"${charm_name}" | grep -Po "(?<=${charm_name}-)\d+")
 
-release_to_channels ${charm_name}
+release_to_channels "${charm_name}"
 
-charm grant cs:~${OWNER}/${charm_name}-${VERSION} --acl read everyone
+charm grant cs:~"${OWNER}"/"${charm_name}"-"${VERSION}" --acl read everyone
 
-charm set cs:~${OWNER}/${charm_name} --channel stable homepage=${HOMEPAGE}
-charm set cs:~${OWNER}/${charm_name} --channel stable bugs-url=${ISSUES}
+charm set cs:~"${OWNER}"/"${charm_name}" --channel stable homepage="${HOMEPAGE}"
+charm set cs:~"${OWNER}"/"${charm_name}" --channel stable bugs-url="${ISSUES}"
 
 echo "cs:~${OWNER}/${charm_name} build and release finished Ok."
