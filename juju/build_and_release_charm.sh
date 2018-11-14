@@ -135,7 +135,7 @@ eval "$(parse_yaml "${JUJU_REPOSITORY}"/layers/"${project_name}"/metadata.yaml '
 
 # publish in store
 charm login
-VERSION=$(charm push "${JUJU_REPOSITORY}"/builds/"${charm_name}" | grep -Po "(?<=${charm_name}-)\d+")
+VERSION="$(charm push "${JUJU_REPOSITORY}"/builds/"${charm_name}" | grep -Po "(?<=${charm_name}-)\d+")"
 
 release_to_channels "${charm_name}"
 

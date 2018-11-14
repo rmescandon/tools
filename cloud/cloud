@@ -1,0 +1,242 @@
+#!/bin/bash -e
+
+show_help() {
+    exec cat <<EOF
+Usage: $(basename "$0") <COMMAND1 COMMAND2 ...> [OPTIONS]
+
+Creates a local cloud environment to deploy basic stuff
+
+Available commands:
+  create        Creates machines for a juju controller, ams services and one lxd node
+  bootstrap     Bootstraps juju cloud on machines created on creation process
+  destroy       Destroys juju local cloud but not the machines
+  purge         Removes lxd and multipass created machines
+
+Optional:
+  --help        Shows this help
+EOF
+}
+
+LP_ACCOUNT="rmescandon"
+TARGET="bionic"
+LXD_MACHINES=("ams" "ctrl")
+MULTIPASS_MACHINES=("lxd")
+
+JUJU_CONTROLLER="localhost-ctrl"
+
+CREATE_CMD=0
+BOOTSTRAP_CMD=1
+DESTROY_CMD=2
+PURGE_CMD=3
+
+cmds=()
+while [ -n "$1" ]; do
+    case "$1" in
+        --help)
+            show_help
+            exit
+            ;;
+        create)
+            cmds+=("$CREATE_CMD")
+            shift
+            ;;
+        bootstrap)
+            cmds+=("$BOOTSTRAP_CMD")
+            shift
+            ;;
+        destroy)
+            cmds+=("$DESTROY_CMD")
+            shift
+            ;;
+        purge)
+            cmds+=("$PURGE_CMD")
+            shift
+            ;;
+        *)
+            show_help
+            exit 1
+    esac
+done 
+
+if [ -z "$cmds" ]; then
+	show_help
+	exit 1
+fi
+
+print_status() {
+    echo ""
+    echo "LXD:"
+    lxc list
+    echo ""
+    echo "Multipass:"
+    multipass list
+}
+
+lxd_machine_ip() {
+    ip="$(lxc info $1 | grep 'eth0:\sinet\s' | awk '{print $3}')"
+    echo "$ip"
+}
+
+multipass_machine_ip() {
+    ip="$(multipass info $1 | grep 'IPv4:' | awk '{print $2}')"
+    echo "$ip"
+}
+
+# $1 instruction to execute repeatedly until complete or max times
+# $2 sleep time between retries. Default 1sec
+# $3 max_iterations. Default 20
+repeat_until_done() {
+  timeout=1
+  if [ $# -ge 2 ]; then
+    timeout=$2
+  fi
+
+  max_iterations=20
+  if [ $# -ge 3 ]; then
+    max_iterations=$3
+  fi
+
+  i=0
+  while [ $i -lt $max_iterations ] ; do
+      if $(eval $1) ; then
+          break
+      fi
+      sleep $timeout
+      let i=i+1
+  done
+  test $i -lt $max_iterations
+}
+
+install_hypervisors_if_needed() {
+    if [ -z "$(snap info multipass | grep installed)" ]; then
+        snap install multipass --classic --beta
+        snap alias multipass mp
+    fi
+
+    if [ -z "$(snap info lxd | grep installed)" ]; then
+        snap install lxd
+        lxd waitready
+        lxd init --auto
+    fi
+}
+
+
+# Creates the machines, but does not bootstrap juju
+create_cloud() {
+    install_hypervisors_if_needed
+
+    # Create lxd machines
+    for machine in "${LXD_MACHINES[@]}"; do
+        # Skip if machine is already created
+        set +e
+        lxc info "$machine" > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            continue
+        fi
+        set -e
+
+        lxc launch ubuntu:"$TARGET" "$machine" || true
+
+        # Setup authorized keys into lxd machines
+        # Wait until having network interface ready in the machine
+        machine_ip=$(lxd_machine_ip $machine)
+        while [ -z "$machine_ip" ]; do
+            sleep 1
+            machine_ip=$(lxd_machine_ip $machine)
+        done
+
+        lxc exec "$machine" ssh-import-id "$LP_ACCOUNT"
+
+        ssh-keygen -f "$HOME/.ssh/known_hosts" -R "$machine_ip" || true
+        repeat_until_done "ssh -oStrictHostKeyChecking=no root@$machine_ip exit"
+    done
+
+    # Create multipass node
+    for machine in "${MULTIPASS_MACHINES[@]}"; do
+        # Skip if machine is already created
+        set +e
+        multipass info "$machine" > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            continue
+        fi
+        set -e
+
+        multipass launch -n "$machine" "$TARGET" || true
+
+        # Setup authorized keys into mp machines
+        # Wait until having network interface ready in the machine
+        machine_ip=$(multipass_machine_ip $machine)
+        while [ -z "$machine_ip" ]; do
+            sleep 1
+            machine_ip=$(multipass_machine_ip $machine)
+        done
+
+        multipass exec "$machine" ssh-import-id "$LP_ACCOUNT"
+
+        ssh-keygen -f "$HOME/.ssh/known_hosts" -R "$machine_ip" || true
+        repeat_until_done "ssh -oStrictHostKeyChecking=no multipass@$machine_ip exit"
+    done
+
+    echo "Done."
+    echo ""
+
+    print_status
+}
+
+# Bootstrap juju over created machines
+bootstrap_cloud() {
+    create_cloud
+
+    juju bootstrap manual/root@"$(lxd_machine_ip ctrl)" "$JUJU_CONTROLLER" || true
+    juju add-machine ssh:root@"$(lxd_machine_ip ams)"
+    juju add-machine ssh:multipass@"$(multipass_machine_ip lxd)"
+
+    juju status
+}
+
+# Destroy juju cloud environment, but not machines
+destroy_cloud() {
+    # Remove any juju stain
+    juju remove-machine 0 --force || true
+    juju remove-machine 1 --force || true
+    juju kill-controller "$JUJU_CONTROLLER" -y || true
+    juju unregister "$JUJU_CONTROLLER" -y || true
+
+    # Purge juju stains
+    for machine in "${LXD_MACHINES[@]}"; do
+        lxc exec "$machine" -- sh -c "rm -f /etc/systemd/system/jujud-unit-*" || true
+    done
+
+    for machine in "${MULTIPASS_MACHINES[@]}"; do
+        multipass exec "$machine" -- sh -c "rm -f /etc/systemd/system/jujud-unit-*" || true
+    done
+
+    juju status || true
+}
+
+# Destroys machines
+purge_cloud() {
+    # Delete lxd machines
+    lxc delete "${LXD_MACHINES[@]}" --force
+
+    # Delete multipass node
+    for machine in "${MULTIPASS_MACHINES[@]}"; do
+        multipass delete "$machine"
+    done
+    multipass purge
+
+    print_status
+}
+
+for cmd in "${cmds[@]}"; do
+    if [ "$CREATE_CMD" -eq "$cmd" ];  then
+        create_cloud
+    elif [ "$BOOTSTRAP_CMD" -eq "$cmd" ];  then
+        bootstrap_cloud
+    elif [ "$DESTROY_CMD" -eq "$cmd" ];  then
+        destroy_cloud
+    elif [ "$PURGE_CMD" -eq "$cmd" ];  then
+        purge_cloud
+    fi
+done
+
